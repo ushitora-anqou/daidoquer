@@ -15,11 +15,12 @@ open DSharpPlus.VoiceNext
 // https://discordapp.com/oauth2/authorize?client_id=782919791207251970&scope=bot&permissions=8
 
 type DaidoquerCommand() =
+    inherit BaseCommandModule()
     [<Command("join"); Description("Join the channel")>]
     member public this.Join(ctx: CommandContext) =
         async {
             try
-                let vnext = ctx.Client.GetVoiceNextClient()
+                let vnext = ctx.Client.GetVoiceNext()
 
                 if vnext = null
                 then failwith "VNext is not enabled or configured."
@@ -133,7 +134,7 @@ let main argv =
 
     let cconf = new CommandsNextConfiguration()
     cconf.set_EnableMentionPrefix true
-    cconf.set_StringPrefix "!ddq"
+    cconf.set_StringPrefixes ["!ddq"]
 
     let commands = client.UseCommandsNext(cconf)
     commands.RegisterCommands<DaidoquerCommand>()
