@@ -1,18 +1,17 @@
 // Learn more about F# at http://fsharp.org
 
-open System
-open System.IO
-open System.Diagnostics
-open System.Threading
-open System.Threading.Tasks
-open Google.Cloud.TextToSpeech.V1
 open DSharpPlus
 open DSharpPlus.CommandsNext
 open DSharpPlus.CommandsNext.Attributes
 open DSharpPlus.Entities
+open DSharpPlus.EventArgs
 open DSharpPlus.VoiceNext
-
-// https://discordapp.com/oauth2/authorize?client_id=782919791207251970&scope=bot&permissions=8
+open Google.Cloud.TextToSpeech.V1
+open System
+open System.Diagnostics
+open System.IO
+open System.Threading
+open System.Threading.Tasks
 
 type DaidoquerCommand() =
     inherit BaseCommandModule()
@@ -60,6 +59,7 @@ type DaidoquerCommand() =
             let! vnc = vnext.ConnectAsync(chn) |> Async.AwaitTask
             eprintfn "Connected to %s" chn.Name
 
+            do! vnc.SendSpeakingAsync(false) |> Async.AwaitTask
             do! this.RespondAsync ctx ("Connected to" + chn.Name)
         }
         |> this.Wrap ctx
@@ -83,7 +83,9 @@ type DaidoquerCommand() =
         }
         |> this.Wrap ctx
 
-let getVoiceAsync text (langCode, name) outStream =
+let getVoiceAsync text (langCode, name) (outStream: VoiceTransmitSink) =
+    (* FIXME: outStream can be of type Stream, but VoiceTransmitSink is not Stream,
+    which uses extension methods.*)
     async {
         let! client =
             TextToSpeechClient.CreateAsync()
@@ -135,18 +137,65 @@ let getVoiceAsync text (langCode, name) outStream =
             |> Async.Ignore
     }
 
+exception IgnoreEvent of unit
+
+let onMessage (client: DiscordClient) (args: MessageCreateEventArgs) (voice: VoiceNextExtension) =
+    let ignoreEvent () = raise (IgnoreEvent())
+
+    async {
+        try
+            let msg = args.Message.Content
+
+            if args.Author.IsCurrent || msg.StartsWith("!ddq")
+            then ignoreEvent ()
+
+            let vnc = voice.GetConnection(args.Guild)
+            if vnc = null then failwith "Not connected in this guild"
+
+            (*
+            if args.Message.Content.ToLower().StartsWith("ping") then
+                do! args.Message.RespondAsync("pong")
+                    |> Async.AwaitTask
+                    |> Async.Ignore
+            *)
+
+            while vnc.IsPlaying do
+                do! vnc.WaitForPlaybackFinishAsync()
+                    |> Async.AwaitTask
+
+            eprintfn "%s" msg
+
+            try
+                do! vnc.SendSpeakingAsync(true) |> Async.AwaitTask
+                let txStream = vnc.GetTransmitSink()
+                do! getVoiceAsync msg ("ja-JP", "ja-JP-Wavenet-B") txStream
+                do! txStream.FlushAsync() |> Async.AwaitTask
+
+                do! vnc.WaitForPlaybackFinishAsync()
+                    |> Async.AwaitTask
+
+                do! vnc.SendSpeakingAsync(false) |> Async.AwaitTask
+            with err ->
+                do! vnc.SendSpeakingAsync(false) |> Async.AwaitTask
+                raise err
+        with
+        | IgnoreEvent () -> ()
+        | Failure (msg) ->
+            eprintfn "Error: %s" msg
+
+            do! args.Message.RespondAsync("Error: " + msg)
+                |> Async.AwaitTask
+                |> Async.Ignore
+        | err ->
+            eprintfn "Error: %A" err
+
+            do! args.Message.RespondAsync("Error: Something goes wrong on our side.")
+                |> Async.AwaitTask
+                |> Async.Ignore
+    }
+
 [<EntryPoint>]
 let main argv =
-    (*
-    use output = File.Create("sample.pcm")
-
-    getVoiceAsync "こんにちは世界2" ("ja-JP", "ja-JP-Wavenet-B") output
-    |> Async.RunSynchronously
-    |> ignore
-
-    0 // return an integer exit code
-*)
-
     let token =
         Environment.GetEnvironmentVariable "DISCORD_TOKEN"
 
@@ -168,17 +217,13 @@ let main argv =
 
     let voice = client.UseVoiceNext()
 
-    (*
-    bot.add_MessageCreated
-        (new AsyncEventHandler<MessageCreateEventArgs>(fun e ->
-        async {
-            if e.Message.Content.ToLower().StartsWith("ping") then
-                do! e.Message.RespondAsync("pong")
-                    |> Async.AwaitTask
-                    |> Async.Ignore
-        }
-        |> Async.StartAsTask :> Task))
-*)
+    client.add_MessageCreated
+        (new Emzi0767.Utilities.AsyncEventHandler<DiscordClient, MessageCreateEventArgs>(fun s e ->
+        (fun () -> onMessage s e voice |> Async.StartAsTask :> Task)
+        |> Task.Run
+        |> ignore
+
+        Task.CompletedTask))
 
     printfn "Connecting to the server..."
 
@@ -194,38 +239,3 @@ let main argv =
     |> ignore
 
     0 // return an integer exit code
-
-(*
-    printfn "Starting to read log file..."
-    use reader = File.OpenText(logfile)
-
-    let regex =
-        new Regex(@"^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} \[(JOIN|LEAVE)\] (.+) (?:joined the game|left the game)$")
-
-    let rec loop () =
-        async {
-            let! line = Async.AwaitTask <| reader.ReadLineAsync()
-
-            if line = null then
-                do! Async.Sleep 1000
-                return! loop ()
-
-            let m = regex.Match line
-            if not m.Success then return! loop ()
-
-            printfn "%s" line
-            do! bot.SendMessageAsync(channel, line) |> Async.AwaitTask.Async.Ignore
-
-            return! loop ()
-        }
-
-    printfn "Done."
-
-    [ Task.Delay(-1) |> Async.AwaitTask
-      loop () ]
-    |> Async.Parallel
-    |> Async.RunSynchronously
-    |> ignore
-
-    0 // return an integer exit code
-*)
