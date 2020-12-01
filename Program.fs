@@ -16,44 +16,72 @@ open DSharpPlus.VoiceNext
 
 type DaidoquerCommand() =
     inherit BaseCommandModule()
-    [<Command("join"); Description("Join the channel")>]
-    member public this.Join(ctx: CommandContext) =
+
+    member private this.RespondAsync (ctx: CommandContext) (msg: string) =
+        ctx.RespondAsync(msg)
+        |> Async.AwaitTask
+        |> Async.Ignore
+
+    member private this.Wrap (ctx: CommandContext) (atask: Async<unit>) =
         async {
             try
-                let vnext = ctx.Client.GetVoiceNext()
-
-                if vnext = null
-                then failwith "VNext is not enabled or configured."
-
-                let vnc = vnext.GetConnection(ctx.Guild)
-
-                if vnc <> null
-                then failwith "Already connected in this guild."
-
-                if ctx.Member = null
-                   || ctx.Member.VoiceState = null
-                   || ctx.Member.VoiceState.Channel = null then
-                    failwith "You are not in a voice channel."
-
-                let chn = ctx.Member.VoiceState.Channel
-
-                eprintfn "Connecting to %s..." chn.Name
-                let! vnc = vnext.ConnectAsync(chn) |> Async.AwaitTask
-                eprintfn "Connected to %s" chn.Name
-
-                do! ctx.RespondAsync("Connected to " + chn.Name)
-                    |> Async.AwaitTask
-                    |> Async.Ignore
+                do! atask
             with
             | Failure (msg) ->
                 eprintfn "Error: %s" msg
-
-                do! ctx.RespondAsync(msg)
-                    |> Async.AwaitTask
-                    |> Async.Ignore
-            | err -> eprintfn "Error: %A" err
+                do! this.RespondAsync ctx ("Error: " + msg)
+            | err ->
+                eprintfn "Error: %A" err
+                do! this.RespondAsync ctx "Error: Something goes wrong on our side."
         }
         |> Async.StartAsTask :> Task
+
+    [<Command("join"); Description("Join the channel")>]
+    member public this.Join(ctx: CommandContext) =
+        async {
+            let vnext = ctx.Client.GetVoiceNext()
+
+            if vnext = null
+            then failwith "VNext is not enabled or configured."
+
+            let vnc = vnext.GetConnection(ctx.Guild)
+
+            if vnc <> null
+            then failwith "Already connected in this guild."
+
+            if ctx.Member = null
+               || ctx.Member.VoiceState = null
+               || ctx.Member.VoiceState.Channel = null then
+                failwith "You are not in a voice channel."
+
+            let chn = ctx.Member.VoiceState.Channel
+
+            eprintfn "Connecting to %s..." chn.Name
+            let! vnc = vnext.ConnectAsync(chn) |> Async.AwaitTask
+            eprintfn "Connected to %s" chn.Name
+
+            do! this.RespondAsync ctx ("Connected to" + chn.Name)
+        }
+        |> this.Wrap ctx
+
+    [<Command("leave"); Description("Leave the channel")>]
+    member public this.Leave(ctx: CommandContext) =
+        async {
+            let vnext = ctx.Client.GetVoiceNext()
+
+            if vnext = null
+            then failwith "VNext is not enabled or configured."
+
+            let vnc = vnext.GetConnection(ctx.Guild)
+            if vnc = null then failwith "Not connected in this guid."
+
+            eprintfn "Disconnecting..."
+            vnc.Disconnect()
+            eprintfn "Disconnected"
+
+            do! this.RespondAsync ctx "Disconnected"
+        }
+        |> this.Wrap ctx
 
 let getVoiceAsync text (langCode, name) outStream =
     async {
@@ -126,15 +154,14 @@ let main argv =
     then failwith "Set envvar DISCORD_TOKEN and LOGFILE"
 
     printfn "Preparing..."
-    let conf = new DiscordConfiguration()
-    conf.set_Token token
-    conf.set_TokenType TokenType.Bot
-    conf.set_AutoReconnect true
+
+    let conf =
+        new DiscordConfiguration(Token = token, TokenType = TokenType.Bot, AutoReconnect = true)
+
     let client = new DiscordClient(conf)
 
-    let cconf = new CommandsNextConfiguration()
-    cconf.set_EnableMentionPrefix true
-    cconf.set_StringPrefixes ["!ddq"]
+    let cconf =
+        new CommandsNextConfiguration(EnableMentionPrefix = true, StringPrefixes = [ "!ddq" ])
 
     let commands = client.UseCommandsNext(cconf)
     commands.RegisterCommands<DaidoquerCommand>()
