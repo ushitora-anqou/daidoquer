@@ -150,7 +150,7 @@ let onMessage (client: DiscordClient) (args: MessageCreateEventArgs) (voice: Voi
             then ignoreEvent ()
 
             let vnc = voice.GetConnection(args.Guild)
-            if vnc = null then failwith "Not connected in this guild"
+            if vnc = null then raise (IgnoreEvent())
 
             (*
             if args.Message.Content.ToLower().StartsWith("ping") then
