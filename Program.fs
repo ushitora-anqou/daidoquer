@@ -113,6 +113,7 @@ let getVoiceAsync text (langCode, name) (outStream: VoiceTransmitSink) =
                                       Arguments = "-i pipe:0 -ac 2 -f s16le -ar 48000 pipe:1",
                                       RedirectStandardInput = true,
                                       RedirectStandardOutput = true,
+                                      RedirectStandardError = true,
                                       UseShellExecute = false))
 
         let! writer =
@@ -145,7 +146,7 @@ let buildMessageProc (vnc: VoiceNextConnection) =
                 let msg = args.Message.Content
 
                 try
-                    eprintfn "%s" msg
+                    printfn "Speaking (guild #%d): %s" args.Guild.Id msg
 
                     try
                         do! vnc.SendSpeakingAsync(true) |> Async.AwaitTask
