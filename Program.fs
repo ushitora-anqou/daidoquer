@@ -60,7 +60,7 @@ type DaidoquerCommand() =
             eprintfn "Connected to %s" chn.Name
 
             do! vnc.SendSpeakingAsync(false) |> Async.AwaitTask
-            do! this.RespondAsync ctx ("Connected to" + chn.Name)
+            do! this.RespondAsync ctx ("Connected to " + chn.Name)
         }
         |> this.Wrap ctx
 
