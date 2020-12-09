@@ -140,7 +140,7 @@ let getVoiceAsync text (langCode, name) (outStream: VoiceTransmitSink) =
 
 // Thanks to: https://www.regextester.com/94502
 let regexURL =
-    new Regex(@"(?:http(s)?:\/\/)?[\w.-]+(?:\.[\w\.-]+)+[\w\-\._~:/?#[\]@!\$&'\(\)\*\+,;=.]+", RegexOptions.Compiled)
+    new Regex(@"(?:http(s)?:\/\/)?[\w.-]+(?:\.[\w\.-]+)+[\w\-\._~:/?#[\]@!\$%&'\(\)\*\+,;=.]+", RegexOptions.Compiled)
 
 let regexCode =
     new Regex(@"```.+```", RegexOptions.Compiled ||| RegexOptions.Singleline)
