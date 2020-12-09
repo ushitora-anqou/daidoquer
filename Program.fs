@@ -203,6 +203,7 @@ let onMessage (client: DiscordClient) (args: MessageCreateEventArgs) (voice: Voi
             | Some proc -> proc
             | None ->
                 let newProc = buildMessageProc vnc
+                newProc.Error.Add(fun e -> eprintfn "Proc died (guid #%d)" args.Guild.Id)
 
                 guild2proc
                 := (!guild2proc).Add(args.Guild.Id, newProc)
