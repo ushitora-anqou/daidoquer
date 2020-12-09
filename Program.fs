@@ -145,11 +145,15 @@ let regexURL =
 let regexCode =
     new Regex(@"```.+```", RegexOptions.Compiled ||| RegexOptions.Singleline)
 
+let regexCustomEmoji = new Regex(@"<:([^:]+):[0-9]+>")
+
 let convertMessage msg =
     // For URL
     let msg = regexURL.Replace(msg, " ちくわ大明神 ")
     // For code
     let msg = regexCode.Replace(msg, " ちくわ大明神 ")
+    // For custom emoji
+    let msg = regexCustomEmoji.Replace(msg, "$1")
 
     msg
 
