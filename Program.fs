@@ -10,6 +10,7 @@ open Google.Cloud.TextToSpeech.V1
 open System
 open System.Diagnostics
 open System.IO
+open System.Text.RegularExpressions
 open System.Threading
 open System.Threading.Tasks
 
@@ -137,15 +138,31 @@ let getVoiceAsync text (langCode, name) (outStream: VoiceTransmitSink) =
             |> Async.Ignore
     }
 
+// Thanks to: https://www.regextester.com/94502
+let regexURL =
+    new Regex(@"(?:http(s)?:\/\/)?[\w.-]+(?:\.[\w\.-]+)+[\w\-\._~:/?#[\]@!\$&'\(\)\*\+,;=.]+", RegexOptions.Compiled)
+
+let regexCode =
+    new Regex(@"```.+```", RegexOptions.Compiled ||| RegexOptions.Singleline)
+
+let convertMessage msg =
+    // For URL
+    let msg = regexURL.Replace(msg, " ちくわ大明神 ")
+    // For code
+    let msg = regexCode.Replace(msg, " ちくわ大明神 ")
+
+    msg
+
 let buildMessageProc (vnc: VoiceNextConnection) =
     MailboxProcessor<MessageCreateEventArgs>.Start
     <| fun inbox ->
         let rec loop () =
             async {
                 let! args = inbox.Receive()
-                let msg = args.Message.Content
 
                 try
+                    let msg = convertMessage args.Message.Content
+
                     printfn "Speaking (guild #%d): %s" args.Guild.Id msg
 
                     try
