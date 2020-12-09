@@ -165,32 +165,23 @@ let buildMessageProc (vnc: VoiceNextConnection) =
 
                     printfn "Speaking (guild #%d): %s" args.Guild.Id msg
 
-                    try
-                        do! vnc.SendSpeakingAsync(true) |> Async.AwaitTask
-                        let txStream = vnc.GetTransmitSink()
-                        do! getVoiceAsync msg ("ja-JP", "ja-JP-Wavenet-B") txStream
-                        do! txStream.FlushAsync() |> Async.AwaitTask
+                    do! vnc.SendSpeakingAsync(true) |> Async.AwaitTask
+                    let txStream = vnc.GetTransmitSink()
+                    do! getVoiceAsync msg ("ja-JP", "ja-JP-Wavenet-B") txStream
+                    do! txStream.FlushAsync() |> Async.AwaitTask
 
-                        do! vnc.WaitForPlaybackFinishAsync()
-                            |> Async.AwaitTask
-
-                        do! vnc.SendSpeakingAsync(false) |> Async.AwaitTask
-                    with err ->
-                        do! vnc.SendSpeakingAsync(false) |> Async.AwaitTask
-                        raise err
-                with
-                | Failure (msg) ->
-                    eprintfn "Error: %s" msg
-
-                    do! args.Message.RespondAsync("Error: " + msg)
+                    do! vnc.WaitForPlaybackFinishAsync()
                         |> Async.AwaitTask
-                        |> Async.Ignore
-                | err ->
+
+                    do! vnc.SendSpeakingAsync(false) |> Async.AwaitTask
+                with err ->
                     eprintfn "Error: %A" err
 
-                    do! args.Message.RespondAsync("Error: Something goes wrong on our side.")
-                        |> Async.AwaitTask
-                        |> Async.Ignore
+                    try
+                        do! args.Message.RespondAsync("Error: Something goes wrong on our side.")
+                            |> Async.AwaitTask
+                            |> Async.Ignore
+                    with err -> eprintfn "Failed to respond: %A" err
 
                 return! loop ()
             }
