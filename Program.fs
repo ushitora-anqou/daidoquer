@@ -84,8 +84,7 @@ type DaidoquerCommand() =
         |> this.Wrap ctx
 
 let getVoiceAsync text (langCode, name) (outStream: VoiceTransmitSink) =
-    (* FIXME: outStream can be of type Stream, but VoiceTransmitSink is not Stream,
-    which uses extension methods.*)
+    (* FIXME: Why do we need type annotation `VoiceTransmitSink`? *)
     async {
         let! client =
             TextToSpeechClient.CreateAsync()
