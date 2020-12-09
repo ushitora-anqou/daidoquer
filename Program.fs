@@ -136,62 +136,71 @@ let getVoiceAsync text (langCode, name) (outStream: VoiceTransmitSink) =
             |> Async.Ignore
     }
 
-exception IgnoreEvent of unit
+let buildMessageProc (vnc: VoiceNextConnection) =
+    MailboxProcessor<MessageCreateEventArgs>.Start
+    <| fun inbox ->
+        let rec loop () =
+            async {
+                let! args = inbox.Receive()
+                let msg = args.Message.Content
+
+                try
+                    eprintfn "%s" msg
+
+                    try
+                        do! vnc.SendSpeakingAsync(true) |> Async.AwaitTask
+                        let txStream = vnc.GetTransmitSink()
+                        do! getVoiceAsync msg ("ja-JP", "ja-JP-Wavenet-B") txStream
+                        do! txStream.FlushAsync() |> Async.AwaitTask
+
+                        do! vnc.WaitForPlaybackFinishAsync()
+                            |> Async.AwaitTask
+
+                        do! vnc.SendSpeakingAsync(false) |> Async.AwaitTask
+                    with err ->
+                        do! vnc.SendSpeakingAsync(false) |> Async.AwaitTask
+                        raise err
+                with
+                | Failure (msg) ->
+                    eprintfn "Error: %s" msg
+
+                    do! args.Message.RespondAsync("Error: " + msg)
+                        |> Async.AwaitTask
+                        |> Async.Ignore
+                | err ->
+                    eprintfn "Error: %A" err
+
+                    do! args.Message.RespondAsync("Error: Something goes wrong on our side.")
+                        |> Async.AwaitTask
+                        |> Async.Ignore
+
+                return! loop ()
+            }
+
+        loop ()
+
+let guild2proc: Map<uint64, MailboxProcessor<MessageCreateEventArgs>> ref = ref Map.empty
 
 let onMessage (client: DiscordClient) (args: MessageCreateEventArgs) (voice: VoiceNextExtension) =
-    let ignoreEvent () = raise (IgnoreEvent())
+    let vnc = voice.GetConnection(args.Guild)
 
-    async {
-        try
-            let msg = args.Message.Content
+    if args.Author.IsCurrent
+       || args.Message.Content.StartsWith("!ddq")
+       || vnc = null then
+        ()
+    else
+        let proc =
+            match (!guild2proc).TryFind args.Guild.Id with
+            | Some proc -> proc
+            | None ->
+                let newProc = buildMessageProc vnc
 
-            if args.Author.IsCurrent || msg.StartsWith("!ddq")
-            then ignoreEvent ()
+                guild2proc
+                := (!guild2proc).Add(args.Guild.Id, newProc)
 
-            let vnc = voice.GetConnection(args.Guild)
-            if vnc = null then raise (IgnoreEvent())
+                newProc
 
-            (*
-            if args.Message.Content.ToLower().StartsWith("ping") then
-                do! args.Message.RespondAsync("pong")
-                    |> Async.AwaitTask
-                    |> Async.Ignore
-            *)
-
-            while vnc.IsPlaying do
-                do! vnc.WaitForPlaybackFinishAsync()
-                    |> Async.AwaitTask
-
-            eprintfn "%s" msg
-
-            try
-                do! vnc.SendSpeakingAsync(true) |> Async.AwaitTask
-                let txStream = vnc.GetTransmitSink()
-                do! getVoiceAsync msg ("ja-JP", "ja-JP-Wavenet-B") txStream
-                do! txStream.FlushAsync() |> Async.AwaitTask
-
-                do! vnc.WaitForPlaybackFinishAsync()
-                    |> Async.AwaitTask
-
-                do! vnc.SendSpeakingAsync(false) |> Async.AwaitTask
-            with err ->
-                do! vnc.SendSpeakingAsync(false) |> Async.AwaitTask
-                raise err
-        with
-        | IgnoreEvent () -> ()
-        | Failure (msg) ->
-            eprintfn "Error: %s" msg
-
-            do! args.Message.RespondAsync("Error: " + msg)
-                |> Async.AwaitTask
-                |> Async.Ignore
-        | err ->
-            eprintfn "Error: %A" err
-
-            do! args.Message.RespondAsync("Error: Something goes wrong on our side.")
-                |> Async.AwaitTask
-                |> Async.Ignore
-    }
+        proc.Post args
 
 [<EntryPoint>]
 let main argv =
@@ -218,10 +227,7 @@ let main argv =
 
     client.add_MessageCreated
         (new Emzi0767.Utilities.AsyncEventHandler<DiscordClient, MessageCreateEventArgs>(fun s e ->
-        (fun () -> onMessage s e voice |> Async.StartAsTask :> Task)
-        |> Task.Run
-        |> ignore
-
+        onMessage s e voice
         Task.CompletedTask))
 
     printfn "Connecting to the server..."
