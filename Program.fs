@@ -13,6 +13,16 @@ open System.IO
 open System.Text.RegularExpressions
 open System.Threading
 open System.Threading.Tasks
+open System.CodeDom
+open System.CodeDom.Compiler
+
+let escapeStr src =
+    use writer = new StringWriter()
+
+    use provider = CodeDomProvider.CreateProvider("CSharp")
+
+    provider.GenerateCodeFromExpression(new CodePrimitiveExpression(src), writer, null)
+    writer.ToString()
 
 type DaidoquerCommand() =
     inherit BaseCommandModule()
@@ -56,9 +66,11 @@ type DaidoquerCommand() =
 
             let chn = ctx.Member.VoiceState.Channel
 
-            eprintfn "Connecting to %s..." chn.Name
+            eprintfn "Connecting to %s..."
+            <| escapeStr chn.Name
+
             let! vnc = vnext.ConnectAsync(chn) |> Async.AwaitTask
-            eprintfn "Connected to %s" chn.Name
+            eprintfn "Connected to %s" <| escapeStr chn.Name
 
             do! vnc.SendSpeakingAsync(false) |> Async.AwaitTask
             do! this.RespondAsync ctx ("Connected to " + chn.Name)
@@ -177,7 +189,8 @@ let buildMessageProc (vnc: VoiceNextConnection) =
                 try
                     let msg = convertMessage args.Message.Content
 
-                    printfn "Speaking (guild #%d): %s" args.Guild.Id msg
+                    escapeStr msg
+                    |> printfn "Speaking (guild #%d): %s" args.Guild.Id
 
                     do! vnc.SendSpeakingAsync(true) |> Async.AwaitTask
                     let txStream = vnc.GetTransmitSink()
