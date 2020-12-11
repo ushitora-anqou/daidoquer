@@ -182,7 +182,7 @@ let convertMessage msg =
 
     msg
 
-let buildMessageProc (vnc: VoiceNextConnection) =
+let buildMessageProc (voice: VoiceNextExtension) =
     MailboxProcessor<MessageCreateEventArgs>.Start
     <| fun inbox ->
         let rec loop () =
@@ -190,6 +190,9 @@ let buildMessageProc (vnc: VoiceNextConnection) =
                 let! args = inbox.Receive()
 
                 try
+                    let vnc = voice.GetConnection(args.Guild)
+                    if vnc = null then failwith "Connection is dead."
+
                     let msg = convertMessage args.Message.Content
 
                     escapeStr msg
@@ -221,18 +224,15 @@ let buildMessageProc (vnc: VoiceNextConnection) =
 let guild2proc: Map<uint64, MailboxProcessor<MessageCreateEventArgs>> ref = ref Map.empty
 
 let onMessage (client: DiscordClient) (args: MessageCreateEventArgs) (voice: VoiceNextExtension) =
-    let vnc = voice.GetConnection(args.Guild)
-
     if args.Author.IsCurrent
-       || args.Message.Content.StartsWith("!ddq")
-       || vnc = null then
+       || args.Message.Content.StartsWith("!ddq") then
         ()
     else
         let proc =
             match (!guild2proc).TryFind args.Guild.Id with
             | Some proc -> proc
             | None ->
-                let newProc = buildMessageProc vnc
+                let newProc = buildMessageProc voice
                 newProc.Error.Add(fun e -> eprintfn "Proc died (guid #%d)" args.Guild.Id)
 
                 guild2proc
