@@ -171,11 +171,14 @@ let convertMessage msg =
 
     // For length limit
     let si = new System.Globalization.StringInfo(msg)
+    let limitLength = 100
 
     let msg =
-        if si.LengthInTextElements > 50
-        then si.SubstringByTextElements(0, 100) + " 以下ちくわ大明神"
-        else msg
+        if si.LengthInTextElements > limitLength then
+            si.SubstringByTextElements(0, limitLength)
+            + " 以下ちくわ大明神"
+        else
+            msg
 
     msg
 
