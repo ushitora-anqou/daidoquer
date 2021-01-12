@@ -202,7 +202,7 @@ let buildMessageProc (voice: VoiceNextExtension) =
                             do! vnc.SendSpeakingAsync(true) |> Async.AwaitTask
 
                             let txStream = vnc.GetTransmitSink()
-                            do! getVoiceAsync msg ("ja-JP", "ja-JP-Wavenet-B") txStream
+                            do! getVoiceAsync msg ("ja-JP", "ja-JP-Wavenet-A") txStream
                             do! txStream.FlushAsync() |> Async.AwaitTask
 
                             do! vnc.WaitForPlaybackFinishAsync()
