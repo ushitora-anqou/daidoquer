@@ -191,22 +191,24 @@ let buildMessageProc (voice: VoiceNextExtension) =
 
                 try
                     let vnc = voice.GetConnection(args.Guild)
-                    if vnc = null then failwith "Connection is dead."
 
-                    let msg = convertMessage args.Message.Content
+                    if vnc <> null then
+                        let msg = convertMessage args.Message.Content
 
-                    escapeStr msg
-                    |> printfn "Speaking (guild #%d): %s" args.Guild.Id
+                        if msg <> "" then
+                            escapeStr msg
+                            |> printfn "Speaking (guild #%d): %s" args.Guild.Id
 
-                    do! vnc.SendSpeakingAsync(true) |> Async.AwaitTask
-                    let txStream = vnc.GetTransmitSink()
-                    do! getVoiceAsync msg ("ja-JP", "ja-JP-Wavenet-B") txStream
-                    do! txStream.FlushAsync() |> Async.AwaitTask
+                            do! vnc.SendSpeakingAsync(true) |> Async.AwaitTask
 
-                    do! vnc.WaitForPlaybackFinishAsync()
-                        |> Async.AwaitTask
+                            let txStream = vnc.GetTransmitSink()
+                            do! getVoiceAsync msg ("ja-JP", "ja-JP-Wavenet-B") txStream
+                            do! txStream.FlushAsync() |> Async.AwaitTask
 
-                    do! vnc.SendSpeakingAsync(false) |> Async.AwaitTask
+                            do! vnc.WaitForPlaybackFinishAsync()
+                                |> Async.AwaitTask
+
+                            do! vnc.SendSpeakingAsync(false) |> Async.AwaitTask
                 with err ->
                     eprintfn "Error: %A" err
 
