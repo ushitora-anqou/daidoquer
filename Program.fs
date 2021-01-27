@@ -182,22 +182,24 @@ let convertMessage msg =
 
     msg
 
+type VoiceMessage = DiscordGuild * string * DiscordMessage option
+
 let buildMessageProc (voice: VoiceNextExtension) =
-    MailboxProcessor<MessageCreateEventArgs>.Start
+    MailboxProcessor<VoiceMessage>.Start
     <| fun inbox ->
         let rec loop () =
             async {
-                let! args = inbox.Receive()
+                let! guild, msgStr, dmsgOpt = inbox.Receive()
 
                 try
-                    let vnc = voice.GetConnection(args.Guild)
+                    let vnc = voice.GetConnection(guild)
 
                     if vnc <> null then
-                        let msg = convertMessage args.Message.Content
+                        let msg = convertMessage msgStr
 
                         if msg <> "" then
                             escapeStr msg
-                            |> printfn "Speaking (guild #%d): %s" args.Guild.Id
+                            |> printfn "Speaking (guild #%d): %s" guild.Id
 
                             do! vnc.SendSpeakingAsync(true) |> Async.AwaitTask
 
@@ -212,37 +214,49 @@ let buildMessageProc (voice: VoiceNextExtension) =
                 with err ->
                     eprintfn "Error: %A" err
 
-                    try
-                        do! args.Message.RespondAsync("Error: Something goes wrong on our side.")
-                            |> Async.AwaitTask
-                            |> Async.Ignore
-                    with err -> eprintfn "Failed to respond: %A" err
+                    match dmsgOpt with
+                    | None -> ()
+                    | Some dmsg ->
+                        try
+                            do! dmsg.RespondAsync("Error: Something goes wrong on our side.")
+                                |> Async.AwaitTask
+                                |> Async.Ignore
+                        with err -> eprintfn "Failed to respond: %A" err
 
                 return! loop ()
             }
 
         loop ()
 
-let guild2proc: Map<uint64, MailboxProcessor<MessageCreateEventArgs>> ref = ref Map.empty
+let guild2proc: Map<uint64, MailboxProcessor<VoiceMessage>> ref = ref Map.empty
+
+let findProc (voice: VoiceNextExtension) (guild: DiscordGuild) =
+    match (!guild2proc).TryFind guild.Id with
+    | Some proc -> proc
+    | None ->
+        let newProc = buildMessageProc voice
+        newProc.Error.Add(fun e -> eprintfn "Proc died (Guild #%d)" guild.Id)
+        guild2proc := (!guild2proc).Add(guild.Id, newProc)
+        newProc
 
 let onMessage (client: DiscordClient) (args: MessageCreateEventArgs) (voice: VoiceNextExtension) =
     if args.Author.IsCurrent
        || args.Message.Content.StartsWith("!ddq") then
         ()
     else
-        let proc =
-            match (!guild2proc).TryFind args.Guild.Id with
-            | Some proc -> proc
-            | None ->
-                let newProc = buildMessageProc voice
-                newProc.Error.Add(fun e -> eprintfn "Proc died (guid #%d)" args.Guild.Id)
+        let proc = findProc voice args.Guild
+        proc.Post(args.Guild, args.Message.Content, Some args.Message)
 
-                guild2proc
-                := (!guild2proc).Add(args.Guild.Id, newProc)
+let onVoiceStateUpdated (client: DiscordClient) (args: VoiceStateUpdateEventArgs) (voice: VoiceNextExtension) =
+    let proc = findProc voice args.Guild
 
-                newProc
+    if args.Before = null || args.Before.Channel = null then
+        let msg = sprintf "%sが参加しました" args.User.Username
+        proc.Post(args.Guild, msg, None)
+    else if args.After = null || args.After.Channel = null then
+        let msg = sprintf "%sが離れました" args.User.Username
+        proc.Post(args.Guild, msg, None)
 
-        proc.Post args
 
 [<EntryPoint>]
 let main argv =
@@ -255,7 +269,12 @@ let main argv =
     printfn "Preparing..."
 
     let conf =
-        new DiscordConfiguration(Token = token, TokenType = TokenType.Bot, AutoReconnect = true)
+        new DiscordConfiguration(Token = token,
+                                 TokenType = TokenType.Bot,
+                                 AutoReconnect = true,
+                                 Intents =
+                                     (DiscordIntents.AllUnprivileged
+                                      ||| DiscordIntents.GuildMembers))
 
     let client = new DiscordClient(conf)
 
@@ -270,6 +289,11 @@ let main argv =
     client.add_MessageCreated
         (new Emzi0767.Utilities.AsyncEventHandler<DiscordClient, MessageCreateEventArgs>(fun s e ->
         onMessage s e voice
+        Task.CompletedTask))
+
+    client.add_VoiceStateUpdated
+        (new Emzi0767.Utilities.AsyncEventHandler<DiscordClient, VoiceStateUpdateEventArgs>(fun s e ->
+        onVoiceStateUpdated s e voice
         Task.CompletedTask))
 
     printfn "Connecting to the server..."
