@@ -251,10 +251,14 @@ let onVoiceStateUpdated (client: DiscordClient) (args: VoiceStateUpdateEventArgs
     let proc = findProc voice args.Guild
 
     if args.Before = null || args.Before.Channel = null then
-        let msg = sprintf "%sが参加しました" args.User.Username
+        let m = args.After.User :?> DiscordMember
+        let msg = sprintf "%sが参加しました" m.DisplayName
+
         proc.Post(args.Guild, msg, None)
     else if args.After = null || args.After.Channel = null then
-        let msg = sprintf "%sが離れました" args.User.Username
+        let m = args.Before.User :?> DiscordMember
+        let msg = sprintf "%sが離れました" m.DisplayName
+
         proc.Post(args.Guild, msg, None)
 
 
