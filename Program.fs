@@ -278,6 +278,7 @@ let main argv =
                                  AutoReconnect = true,
                                  Intents =
                                      (DiscordIntents.AllUnprivileged
+                                      ||| DiscordIntents.GuildPresences
                                       ||| DiscordIntents.GuildMembers))
 
     let client = new DiscordClient(conf)
